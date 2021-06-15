@@ -16,11 +16,322 @@
 	<body>
 		<div class="reveal">
 			<div class="slides">
-				<section data-markdown="title.md">
+				<section data-markdown>
+					<textarea data-template>
+						## Streaming Data Service (SDS)
+
+						<span style="color: #a9a9a9;"> A distributed streaming service written between </span>
+
+						October 1, 2019 <span style="color: #a9a9a9;"> and </span> June 1, 2020
+
+						<span style="color: #a9a9a9;"> by </span>
+
+						John Rinehart &nbsp; <a href="https://www.github.com/johnrichardrinehart"><img data-src="./assets/GitHub-Mark-Light-32px.png" style="margin-bottom:0;"></a> 
+
+						Takeshi Shinoda-san &nbsp; <a href="https://www.github.com/takeshinoda"><img data-src="./assets/GitHub-Mark-Light-32px.png" style="margin-bottom:0;"></a> 
+
+						Yuta Shimakawa-san &nbsp; <a href="https://www.github.com/bananaumai"><img data-src="./assets/GitHub-Mark-Light-32px.png" style="margin-bottom:0;"></a> 
+
+						<span style="color: #a9a9a9;"> for </span>
+
+						[MODE (Tinkermode, Inc.)](https://tinkermode.jp)
+					</textarea>
 				</section>
-				<section data-markdown="mode-value-add.md">
+				<section data-markdown>
+					<textarea data-template>
+						## MODE Value-Add
+
+						1. Cloud Support Engineers (in Japan)
+						1. Simple Auth/IAM
+						1. Simple pricing model (affordable AYCE level)
+						1. One-off manual data export *
+						1. High-availability, high-throughput (SLA) *
+						1. Custom data pipelines ("Smart Modules") *
+					</textarea>
 				</section>
-				<section data-markdown="mode-hl-arch.md">
+				<section data-markdown>
+					<textarea data-template>
+						## High-Level Infrastructure
+
+						<img data-src="./assets/MODE_HL_ARCH.png" class="stretch"> 
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## Customer Requirements
+
+						* binary data storage
+						* support for aperiodic network disconnects
+						* device- or application-scoped stream-like data structures
+						* queryable/taggable storage and retrieval interface
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## Design Process
+						<!--
+							1. System infrastructure proposal comprising:
+
+							a. BoM (in-house and off-the-shelf)
+
+							b. failure analysis
+
+							c. SLA specification (throughput and availability)
+
+							d. Documentation
+
+							e. **not** IaC (yet)
+							1. Data model and storage format
+							1. Service code development
+							1. IaC development
+							1. CI/CD pipeline configuration (`dev`/`staging`/`prod`)
+							1. E2E tests and smoke tests
+							1. Iterate based on customer feedback
+						-->
+						![Design Process](./assets/DevelopmentFlow.png)
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## System Infrastructure
+
+						![System Architecture](./assets/SystemArchitecture.png)
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## MQTT Topic Structure
+
+						### To SDS
+						```
+						/devices/${deviceId}/smartModules/${smartModuleName}/bulkData
+						```
+						![Data Model](./assets/S3DataModel.png)
+
+
+						```
+						/devices/${deviceId}/smartModules/${smartModuleName}/request
+						```
+
+
+						### From SDS
+						```
+						/devices/${deviceId}/smartModules/${smartModuleName}/response
+						```
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						### Control Message JSON Schema
+
+						```json
+						{
+						    "$schema": "http://json-schema.org/draft-04/schema#",
+						    "type": "object",
+						    "properties": {
+						        "command": {
+						            "enum": ["open", "forceOpen", "close"]
+						        },
+						        "packetId": {
+						            "type": "integer"
+						        }
+						    },
+						    "required": [
+						         "command"
+						    ]
+						}
+						```
+					</textarea>
+				</section>
+				<section>
+					<div class="stretch">
+						<h2> Sequence Diagram </h2>
+						<!--
+							USE HERE: https://sequencediagram.org/
+							title SDS Operation
+
+							participant Device
+							participant MQTTd
+							participant SDSd
+							database MongoDB
+
+							Device->MQTTd: */request: Request to acquire a session for stream
+							MQTTd->SDSd: Enqueue message for processing
+							SDSd->MongoDB: Check if device may acquire session for stream
+							SDSd->MQTTd: Send response object to device
+							group #2f2e7b allowed #white
+							Device->MQTTd:Send data regularly to keep session alive
+							MQTTd->MongoDB:Store Metadata or blob offset data
+							MQTTd->S3:Store binary data
+							Device->MQTTd:Close session (graceful case)
+							end
+							group #2f2e7b disallowed #white
+							group #2f2e7b forceOpen #white
+							Device->MQTTd:Send data regularly to keep session alive
+							end
+							group #2f2e7b wait #white
+							Device->MQTTd:Poll regularly to check for session availability
+							end
+							end
+
+							![Sequence Diagram](./SequenceDiagram.png)
+						-->
+
+						<img data-src="./assets/SequenceDiagram.png" />
+					</div>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## SDS S3 Storage Format
+
+						```bash
+						├── 1
+						│   └── my-smart-module
+						│       ├── baz.blob
+						│       └── foo.blob
+						└── 3
+						    ├── camera-1
+						    │   ├── its-a-thursday.blob
+						    │   └── its-a-tuesday.blob
+						    └── camera-2
+						        ├── alice.blob
+						        └── bob.blob
+						```
+
+						![S3 Storage](./assets/S3StorageFormat.png)
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## SDS Mongo Storage Format
+
+						```bash
+						├── 1:my-smart-module:baz
+						│   └── 10.json
+						├── 1:my-smart-module:foo
+						├── 3:camera-1:its-a-thursday
+						│   └── 15.json
+						├── 3:camera-1:its-a-tuesday
+						│   └── 292.json
+						├── 3:camera-2:alice
+						├── 3:camera-2:bob
+						└── streams
+						    ├── 1:my-smart-module:baz
+						    ├── 1:my-smart-module:foo
+						    ├── 3:camera-1:its-a-thursday
+						    ├── 3:camera-1:its-a-tuesday
+						    ├── 3:camera-2:alice
+						    └── 3:camera-2:bob
+						```
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## CI/CD Process
+
+						![CICD.png](./assets/CICD.png)
+
+						* Branch or Tag triggers release to particular environment
+						- branch `master`/`main` → `dev`
+						- tag `release-v*` → `staging` (manual release to `prod`)
+						* Secrets managed by GitHub
+						* Managed infrastructure for all environments configured in `terraform`
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## Design Considerations
+						* Unresponsive device
+						* Concurrent Writers
+						* Privacy (see stream status)
+						* Overwriting data
+						* Metadata search implementation
+						* Packet blob size
+						* Data consistency/validity
+						* SPoF
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## Implementation Performance
+						* `t2-small` instances process ~100x100 KiB messages per second (default: 3 instances)
+						   - ~30x1 MiB messages per second
+						   - linear scaling improvements with increasing instances
+						* Tests support 10,000 simultaneous sessions
+						* Downloader provides 30 MiB/sec per client download
+						   - autoscaling linearly increases bandwidth
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						### Division of Labor: Me
+
+						#### Design
+						* Infrastructure Design (service definitions, AWS infrastructure BoM)
+						* Message Format (MessagePack, MQTT topics)
+						* Control layer protocol design(behavior for device session acquisition/release and data storage)
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						### Division of Labor: Me
+
+						#### Implementation
+						* Data downloader and unit tests
+						* `terraform` implementation
+						* User-facing and internal documentation
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						### Division of Labor: Takeshi-san
+
+						#### Design
+						* Review infrastructure design (service definitions, AWS infrastructure BoM)
+						* Review message format (MessagePack, MQTT topics)
+						* Review internal and user-facing documentation
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						### Division of Labor: Takeshi-san
+
+						#### Design
+						* Implementing message worker (control and data messages)
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						### Division of Labor: Yuta-san
+
+						#### Implementation
+						* E2E and smoke tests
+						* Assisting with deployment and `terraform` code structure
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						### Design Tools
+						Thanks to:
+						* [Lucid](https://lucid.app)
+						* [diagrams.net](https://diagrams.net)
+						* [sequencediagram.org](https://sequencediagram.org)
+						* [jsonschema.net](https://jsonschema.net)
+					</textarea>
+				</section>
+				<section data-markdown>
+					<textarea data-template>
+						## Thanks
+
+						### Audience
+						For your attention.
+
+						### Teammates
+
+						* [MODE](https://tinkermode.com) for the opportunity
+						* Takeshi-san for his core project guidance and cooperation
+						* Shimakawa-san for his testing and infrastructure support
+					</textarea>
 				</section>
 			</div>
 		</div>
